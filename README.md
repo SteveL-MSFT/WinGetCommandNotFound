@@ -5,6 +5,8 @@ This is a proof-of-concept implementing both the `IFeedbackProvider` and `IComma
 
 **This is NOT intended to be used outside of a demo with no intent to take this to production**
 
+![Screen-Recording-2022-12-27-at-8](https://user-images.githubusercontent.com/11859881/209662484-c739d16b-3dbd-44be-84b5-2402bcfadbbe.gif)
+
 ## Feedback provider
 
 The feedback provider uses the existing sqlite database used by winget instead of downloading and expanding
