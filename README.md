@@ -22,3 +22,7 @@ I've only tested this on win-arm64, but it builds for win-x64 runtime, so it sho
 
 PSReadLine currently does not have a way to present a prediction without a keypress.
 The suggestion from the feedback provider is given as a prediction, but will require pressing `w` for the prediction to show.
+
+## Building
+
+Go to `src` folder and use `dotnet build`.  Requires .NET 7 SDK installed and in path.
