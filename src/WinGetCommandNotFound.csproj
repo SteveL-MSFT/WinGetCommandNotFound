@@ -2,14 +2,13 @@
 
   <PropertyGroup>
     <TargetFramework>net7.0</TargetFramework>
+    <!--CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies-->
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-
-    <!-- Disable deps.json generation -->
     <GenerateDependencyFile>false</GenerateDependencyFile>
-
-    <!-- Deploy the produced assembly -->
     <PublishDir>..\bin\WinGetCommandNotFound</PublishDir>
+    <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
+    <RuntimeIdentifiers>win-arm64;win-x64</RuntimeIdentifiers>
   </PropertyGroup>
 
   <PropertyGroup Condition=" '$(Configuration)' == 'Release' ">
@@ -22,7 +21,9 @@
     <PackageReference Include="Microsoft.PowerShell.SDK" Version="7.4.0-*">
       <ExcludeAssets>contentFiles</ExcludeAssets>
       <PrivateAssets>All</PrivateAssets>
-    </PackageReference>    
+    </PackageReference>
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="7.0.*"/>
+    <PackageReference Include="Sqlite" Version="3.8.*"/>
     <Content Include="WinGetCommandNotFound.psd1">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>

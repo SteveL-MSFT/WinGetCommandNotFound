@@ -1,6 +1,7 @@
+using Microsoft.Data.Sqlite;
 using System.Diagnostics;
+using System.IO;
 using System.Management.Automation;
-using System.Management.Automation.Internal;
 using System.Management.Automation.Runspaces;
 using System.Management.Automation.Subsystem;
 using System.Management.Automation.Subsystem.Feedback;
@@ -35,7 +36,7 @@ namespace wingetprovider
             // make sure latest index.db is loaded
             var task = Task.Run(() => 
             {
-                var psi = new ProcessStartInfo("winget", "source update");
+                var psi = new ProcessStartInfo("winget", "source update --name winget");
                 psi.CreateNoWindow = true;
                 psi.RedirectStandardOutput = true;
                 psi.RedirectStandardError = true;
@@ -56,10 +57,28 @@ namespace wingetprovider
     public sealed class WinGetCommandNotFoundFeedback : IFeedbackProvider
     {
         private readonly Guid _guid;
+        private SqliteConnection? _dbConnection;
 
         public WinGetCommandNotFoundFeedback(string guid)
         {
             _guid = new Guid(guid);
+            // Trying to enumerate WindowsApps folder results in AccessDenied,
+            // so using a hardcoded path for now
+            var dbPath = new FileInfo(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles) + @"\WindowsApps\Microsoft.Winget.Source_2022.1227.1114.286_neutral__8wekyb3d8bbwe\public\index.db");
+            if (!dbPath.Exists)
+            {
+                throw new Exception("Could not find index.db");
+            }
+
+            // open connection to index.db
+            _dbConnection = new SqliteConnection("Data Source=" + dbPath);
+            _dbConnection.Open();
+        }
+
+        public void Dispose()
+        {
+            _dbConnection?.Close();
+            _dbConnection?.Dispose();
         }
 
         public Guid Id => _guid;
@@ -73,40 +92,32 @@ namespace wingetprovider
         /// </summary>
         public string? GetFeedback(string commandLine, ErrorRecord lastError, CancellationToken token)
         {
-            if (lastError.FullyQualifiedErrorId == "CommandNotFoundException")
+            if (_dbConnection is not null && lastError.FullyQualifiedErrorId == "CommandNotFoundException")
             {
                 var target = (string)lastError.TargetObject;
+                var command = _dbConnection.CreateCommand();
+                command.CommandText =
+                @"
+                    SELECT
+                        ids.id
+                    FROM
+                        commands, commands_map, manifest, ids
+                    WHERE
+                        commands.command = $command
+                        AND commands.rowid = commands_map.command
+                        AND manifest.rowid = commands_map.manifest
+                        AND ids.rowid = manifest.id
+                    LIMIT 1
+                ";
+                command.Parameters.AddWithValue("$command", target);
 
-                if (target == "kubectl")
+                using (var reader = command.ExecuteReader())
                 {
-                    return "winget install kubernetes-cli";
-                }
- 
-                // would be better to use SQL queries against the index.db SQLite database,
-                // but this is just a proof of concept to demonstrate the user experience
-                var psi = new ProcessStartInfo("winget", "search --command " + target);
-                psi.CreateNoWindow = true;
-                psi.RedirectStandardOutput = true;
-                psi.RedirectStandardError = true;
-                var p = Process.Start(psi);
-                var output = p?.StandardOutput.ReadToEnd();
-                p?.WaitForExit();
-                if (p?.ExitCode == 0 && output is not null && output.Length > 0)
-                {
-                    var lines = output.Split('\n');
-                    if (lines.Length > 2)
+                    while (reader.Read())
                     {
-                        var line = lines[2];
-                        if (line.Length > 0)
-                        {
-                            var parts = line.Split(' ', 3);
-                            if (parts.Length == 3)
-                            {
-                                string suggestion = "winget install " + parts[1];
-                                WinGetCommandNotFoundPredictor.WingetPrediction = suggestion;
-                                return suggestion;
-                            }
-                        }
+                        var suggestion = "winget install " + reader.GetString(0);
+                        WinGetCommandNotFoundPredictor.WingetPrediction = suggestion;
+                        return suggestion;
                     }
                 }
             }
