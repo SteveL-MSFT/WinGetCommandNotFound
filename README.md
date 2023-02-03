@@ -26,3 +26,8 @@ The suggestion from the feedback provider is given as a prediction, but will req
 ## Building
 
 Go to `src` folder and use `dotnet build`.  Requires .NET 7 SDK installed and in path.
+
+## Using
+
+In the published folder, just `Import-Module WinGetCommandNotFound.psd1` which will register the Feedback Provider and Predictor
+Then type a command you don't have installed.
