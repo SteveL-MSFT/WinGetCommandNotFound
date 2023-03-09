@@ -64,7 +64,7 @@ namespace wingetprovider
             _guid = new Guid(guid);
             // Trying to enumerate WindowsApps folder results in AccessDenied,
             // so using a hardcoded path for now
-            var dbPath = new FileInfo(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles) + @"\WindowsApps\Microsoft.Winget.Source_2023.224.1920.241_neutral__8wekyb3d8bbwe\public\index.db");
+            var dbPath = new FileInfo(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles) + @"\WindowsApps\Microsoft.Winget.Source_2023.309.1003.650_neutral__8wekyb3d8bbwe\Public\index.db");
             if (!dbPath.Exists)
             {
                 throw new Exception("Could not find index.db");
