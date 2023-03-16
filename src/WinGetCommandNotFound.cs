@@ -1,19 +1,16 @@
 using Microsoft.Data.Sqlite;
 using System.Diagnostics;
-using System.IO;
 using System.Management.Automation;
 using System.Management.Automation.Runspaces;
 using System.Management.Automation.Subsystem;
 using System.Management.Automation.Subsystem.Feedback;
 using System.Management.Automation.Subsystem.Prediction;
-using System.Threading.Tasks;
 
 namespace wingetprovider
 {
     public sealed class Init : IModuleAssemblyInitializer, IModuleAssemblyCleanup
     {
-        private const string feedbackId = "e5351aa4-dfde-4d4d-bf0f-1a2f5a37d8d6";
-        private const string predictorId = "b0fcf338-b1d8-43f6-bcb9-aadf697b9706";
+        internal const string id = "e5351aa4-dfde-4d4d-bf0f-1a2f5a37d8d6";
 
         public void OnImport()
         {
@@ -43,28 +40,31 @@ namespace wingetprovider
                 Process.Start(psi);
             });
 
-            SubsystemManager.RegisterSubsystem<IFeedbackProvider, WinGetCommandNotFoundFeedback>(new WinGetCommandNotFoundFeedback(feedbackId));
-            SubsystemManager.RegisterSubsystem<ICommandPredictor, WinGetCommandNotFoundPredictor>(new WinGetCommandNotFoundPredictor(predictorId));
+            SubsystemManager.RegisterSubsystem<IFeedbackProvider, WinGetCommandNotFoundFeedbackPredictor>(WinGetCommandNotFoundFeedbackPredictor.Singleton);
+            SubsystemManager.RegisterSubsystem<ICommandPredictor, WinGetCommandNotFoundFeedbackPredictor>(WinGetCommandNotFoundFeedbackPredictor.Singleton);
         }
 
         public void OnRemove(PSModuleInfo psModuleInfo)
         {
-            SubsystemManager.UnregisterSubsystem<IFeedbackProvider>(new Guid(feedbackId));
-            SubsystemManager.UnregisterSubsystem<ICommandPredictor>(new Guid(predictorId));
+            SubsystemManager.UnregisterSubsystem<IFeedbackProvider>(new Guid(id));
+            SubsystemManager.UnregisterSubsystem<ICommandPredictor>(new Guid(id));
         }
     }
 
-    public sealed class WinGetCommandNotFoundFeedback : IFeedbackProvider
+    public sealed class WinGetCommandNotFoundFeedbackPredictor : IFeedbackProvider, ICommandPredictor
     {
         private readonly Guid _guid;
         private SqliteConnection? _dbConnection;
+        private string? _suggestion;
+        Dictionary<string, string>? ISubsystem.FunctionsToDefine => null;
 
-        public WinGetCommandNotFoundFeedback(string guid)
+        public static WinGetCommandNotFoundFeedbackPredictor Singleton { get; } = new WinGetCommandNotFoundFeedbackPredictor(Init.id);
+        private WinGetCommandNotFoundFeedbackPredictor(string guid)
         {
             _guid = new Guid(guid);
             // Trying to enumerate WindowsApps folder results in AccessDenied,
             // so using a hardcoded path for now
-            var dbPath = new FileInfo(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles) + @"\WindowsApps\Microsoft.Winget.Source_2023.309.1003.650_neutral__8wekyb3d8bbwe\Public\index.db");
+            var dbPath = new FileInfo(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles) + @"\WindowsApps\Microsoft.Winget.Source_2023.316.2329.417_neutral__8wekyb3d8bbwe\Public\index.db");
             if (!dbPath.Exists)
             {
                 throw new Exception("Could not find index.db");
@@ -90,7 +90,7 @@ namespace wingetprovider
         /// <summary>
         /// Gets feedback based on the given commandline and error record.
         /// </summary>
-        public string? GetFeedback(string commandLine, ErrorRecord lastError, CancellationToken token)
+        public FeedbackItem? GetFeedback(string commandLine, ErrorRecord lastError, CancellationToken token)
         {
             if (_dbConnection is not null && lastError.FullyQualifiedErrorId == "CommandNotFoundException")
             {
@@ -115,49 +115,17 @@ namespace wingetprovider
                 {
                     while (reader.Read())
                     {
-                        var suggestion = "winget install " + reader.GetString(0);
-                        WinGetCommandNotFoundPredictor.WingetPrediction = suggestion;
-                        return suggestion;
+                        _suggestion = "winget install " + reader.GetString(0);
+                        return new FeedbackItem(
+                            Name,
+                            new List<string> { _suggestion }
+                        );
                     }
                 }
             }
 
             return null;
         }
-    }
-
-    public class WinGetCommandNotFoundPredictor : ICommandPredictor
-    {
-        private readonly Guid _guid;
-        internal static string? _wingetPrediction;
-        private static object _lock = new object();
-
-        internal static string? WingetPrediction
-        {
-            get {
-                lock (_lock)
-                {
-                    return _wingetPrediction;
-                }
-            }
-            set {
-                lock (_lock)
-                {
-                    _wingetPrediction = value;
-                }
-            }
-        }
-
-        public WinGetCommandNotFoundPredictor(string guid)
-        {
-            _guid = new Guid(guid);
-        }
-
-        public Guid Id => _guid;
-
-        public string Name => "winget-cmd-not-found-predictor";
-
-        public string Description => "Predict the install command for missing commands via winget.";
 
         public bool CanAcceptFeedback(PredictionClient client, PredictorFeedbackKind feedback)
         {
@@ -173,12 +141,12 @@ namespace wingetprovider
             List<PredictiveSuggestion>? result = null;
 
             result ??= new List<PredictiveSuggestion>(1);
-            if (WingetPrediction is null)
+            if (_suggestion is null)
             {
                 return default;
             }
 
-            result.Add(new PredictiveSuggestion(WingetPrediction));
+            result.Add(new PredictiveSuggestion(_suggestion));
 
             if (result is not null)
             {
@@ -190,7 +158,7 @@ namespace wingetprovider
 
         public void OnCommandLineAccepted(PredictionClient client, IReadOnlyList<string> history)
         {
-            WingetPrediction = null;
+            _suggestion = null;
         }
 
         public void OnSuggestionDisplayed(PredictionClient client, uint session, int countOrIndex) { }
